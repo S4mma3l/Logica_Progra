@@ -1,0 +1,5 @@
+https://my.isc2.org/s/login
+
+https://my.isc2.org/s/Dashboard/MyCourses,https://learn.isc2.org/d2l/home,https://learn.isc2.org/d2l/home/10845
+
+https://www.youtube.com/watch?v=fB7J5BX-wyY&t=1319s

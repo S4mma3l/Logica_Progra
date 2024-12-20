@@ -1,150 +1,103 @@
-import os
 import subprocess
+import time
+import os
 import sys
-import customtkinter as ctk
 from tkinter import messagebox
+import customtkinter as ctk
 
-# Configuración UTF-8 para compatibilidad con caracteres especiales
+# Aseguramos que el sistema esté utilizando UTF-8
 sys.stdout.reconfigure(encoding='utf-8')
 
-# Configuración de CustomTkinter
-ctk.set_appearance_mode("Dark") 
-ctk.set_default_color_theme("blue")
-
-def list_ffmpeg_devices():
-    """Lista los dispositivos de entrada de video y audio disponibles en FFmpeg."""
+# Función para iniciar 5kPlayer (el servidor AirPlay)
+def start_5kplayer():
+    """
+    Inicia 5kPlayer para que funcione como servidor AirPlay.
+    Asegúrate de que 5kPlayer esté instalado en el directorio correcto y sea accesible desde PATH.
+    """
     try:
-        result = subprocess.run(
-            ["ffmpeg", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
-            stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            text=True,
-        )
-        video_devices = []
-        audio_devices = []
-        for line in result.stderr.splitlines():
-            if "DirectShow video device" in line:
-                video_devices.append(line.split('"')[1])
-            elif "DirectShow audio device" in line:
-                audio_devices.append(line.split('"')[1])
-
-        if not video_devices:
-            raise ValueError("No se encontraron dispositivos de video disponibles.")
-        if not audio_devices:
-            raise ValueError("No se encontraron dispositivos de audio disponibles.")
-            
-        return video_devices, audio_devices
-    except FileNotFoundError:
-        messagebox.showerror("Error", "FFmpeg no está instalado o no está configurado en el PATH del sistema.")
-        return [], []
-    except ValueError as e:
-        messagebox.showerror("Error", str(e))
-        return [], []
+        # Iniciar 5kPlayer en segundo plano
+        subprocess.Popen("start 5kPlayer.exe", shell=True)
+        time.sleep(5)  # Esperamos a que el servidor AirPlay inicie
+        print("5kPlayer iniciado como servidor AirPlay.")
     except Exception as e:
-        messagebox.showerror("Error", f"Error al listar los dispositivos: {e}")
-        return [], []
-
-def validate_resolution(resolution):
-    """Valida que la resolución ingresada esté en el formato correcto."""
-    if not resolution:
+        messagebox.showerror("Error", f"Error al iniciar 5kPlayer: {e}")
         return False
-    parts = resolution.split("x")
-    return len(parts) == 2 and all(p.isdigit() for p in parts)
+    return True
 
-def validate_fps(fps):
-    """Valida que el FPS sea un número positivo."""
-    return fps.isdigit() and int(fps) > 0
+# Función para capturar la transmisión de AirPlay usando FFmpeg
+def capture_airplay(ip_address, port, output_file):
+    """
+    Captura el video y audio transmitido por AirPlay usando FFmpeg.
+    :param ip_address: Dirección IP del servidor AirPlay (será localhost en este caso).
+    :param port: Puerto del servidor AirPlay (normalmente, 5000 para 5kPlayer).
+    :param output_file: Nombre del archivo de salida (ej. "output.mp4").
+    """
+    rtsp_url = f"rtsp://{ip_address}:{port}"
 
-def capture_iphone(video_device, audio_device, resolution, fps, output_file):
-    """Inicia la captura del iPhone con FFmpeg."""
     command = [
         "ffmpeg",
-        "-f", "dshow",
-        "-video_size", resolution,
-        "-framerate", str(fps),
-        "-i", f"video={video_device}:audio={audio_device}",
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-c:a", "aac",
-        "-strict", "experimental",
-        output_file,
+        "-i", rtsp_url,  # URL RTSP de AirPlay
+        "-c:v", "libx264",  # Códec de video
+        "-c:a", "aac",      # Códec de audio
+        "-preset", "ultrafast",  # Preset rápido para captura en tiempo real
+        "-f", "mp4",        # Formato de salida
+        output_file         # Nombre del archivo de salida
     ]
+
     try:
         subprocess.run(command, check=True)
-    except KeyboardInterrupt:
-        messagebox.showinfo("Información", "Captura detenida por el usuario.")
+        print("Captura completada exitosamente.")
     except subprocess.CalledProcessError as e:
-        messagebox.showerror("Error", f"Error al ejecutar FFmpeg: {e.stderr}")
+        messagebox.showerror("Error", f"Error al ejecutar FFmpeg: {e}")
     except Exception as e:
         messagebox.showerror("Error", f"Ocurrió un error inesperado: {e}")
 
+# Función principal que maneja la interfaz de usuario
 def main():
-    """Interfaz gráfica principal."""
-    def start_capture():
-        video_device = video_option.get()
-        audio_device = audio_option.get()
-        resolution = resolution_entry.get()
-        fps = fps_entry.get()
-        output_file = output_entry.get()
-
-        if not video_device or not audio_device:
-            messagebox.showerror("Error", "Los dispositivos de video y audio no pueden estar vacíos.")
-            return
-
-        if not validate_resolution(resolution):
-            messagebox.showerror("Error", "Resolución inválida. Debe estar en el formato 'ancho x alto' (por ejemplo, 1280x720).")
-            return
-
-        if not validate_fps(fps):
-            messagebox.showerror("Error", "FPS inválido. Debe ser un número positivo.")
-            return
-
-        if not output_file:
-            messagebox.showerror("Error", "El nombre del archivo de salida no puede estar vacío.")
-            return
-
-        capture_iphone(video_device, audio_device, resolution, fps, output_file)
-
+    """Interfaz gráfica principal usando CustomTkinter."""
     app = ctk.CTk()
-    app.title("Captura de Pantalla")
-    app.geometry("600x800")
+    app.title("Captura AirPlay desde iPhone")
+    app.geometry("600x400")
 
-    # Obtener dispositivos disponibles
-    video_devices, audio_devices = list_ffmpeg_devices()
-
-    if not video_devices or not audio_devices:
-        messagebox.showerror("Error", "No se encontraron dispositivos de video o audio disponibles.")
-        return
-
-    # Widgets de la interfaz
-    title_label = ctk.CTkLabel(app, text="Captura de Pantalla", font=("Arial", 20))
+    # Etiqueta y campos de entrada
+    title_label = ctk.CTkLabel(app, text="Captura AirPlay de iPhone", font=("Arial", 20))
     title_label.pack(pady=10)
 
-    video_label = ctk.CTkLabel(app, text="Dispositivo de Video:")
-    video_label.pack()
-    video_option = ctk.CTkOptionMenu(app, values=video_devices)
-    video_option.pack(pady=5)
+    ip_label = ctk.CTkLabel(app, text="Dirección IP del servidor AirPlay:")
+    ip_label.pack()
+    ip_entry = ctk.CTkEntry(app, placeholder_text="Por defecto: 127.0.0.1")
+    ip_entry.pack(pady=5)
+    ip_entry.insert(0, "127.0.0.1")
 
-    audio_label = ctk.CTkLabel(app, text="Dispositivo de Audio:")
-    audio_label.pack()
-    audio_option = ctk.CTkOptionMenu(app, values=audio_devices)
-    audio_option.pack(pady=5)
-
-    resolution_label = ctk.CTkLabel(app, text="Resolución (ejemplo: 1280x720):")
-    resolution_label.pack()
-    resolution_entry = ctk.CTkEntry(app, placeholder_text="Resolución de captura")
-    resolution_entry.pack(pady=5)
-
-    fps_label = ctk.CTkLabel(app, text="FPS (ejemplo: 30):")
-    fps_label.pack()
-    fps_entry = ctk.CTkEntry(app, placeholder_text="Cuadros por segundo")
-    fps_entry.pack(pady=5)
+    port_label = ctk.CTkLabel(app, text="Puerto del servidor AirPlay:")
+    port_label.pack()
+    port_entry = ctk.CTkEntry(app, placeholder_text="Por defecto: 5000")
+    port_entry.pack(pady=5)
+    port_entry.insert(0, "5000")
 
     output_label = ctk.CTkLabel(app, text="Archivo de salida (ejemplo: output.mp4):")
     output_label.pack()
     output_entry = ctk.CTkEntry(app, placeholder_text="Nombre del archivo de salida")
     output_entry.pack(pady=5)
 
+    # Función que ejecuta la captura cuando el usuario presiona "Iniciar Captura"
+    def start_capture():
+        ip_address = ip_entry.get()
+        port = port_entry.get()
+        output_file = output_entry.get()
+
+        if not output_file:
+            messagebox.showerror("Error", "El nombre del archivo de salida no puede estar vacío.")
+            return
+
+        # Iniciar 5kPlayer (servidor AirPlay)
+        if not start_5kplayer():
+            return
+
+        # Capturar la transmisión de AirPlay usando FFmpeg
+        capture_airplay(ip_address, port, output_file)
+
+    # Botón para iniciar la captura
     start_button = ctk.CTkButton(app, text="Iniciar Captura", command=start_capture)
     start_button.pack(pady=20)
 
